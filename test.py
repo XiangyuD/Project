@@ -1,78 +1,102 @@
-import os
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Dec  7 18:57:20 2021
 
-from torch.utils.data import Dataset
-from data_prepare import *
-from Function.Network import *
+@author: hlak
+"""
+
 import torch
-import torch.nn as nn
+import torchvision
+from torch import nn,optim
 import numpy as np
-from sklearn.metrics import confusion_matrix
-from Function.Get_Result import *
-import matplotlib.pyplot as plt
+from torchvision import transforms
+from torch.utils.data import DataLoader
+from model import CNN
+from torch.autograd import Variable
+from torch.utils.data import DataLoader,TensorDataset
 
 
-class test_dataset(Dataset):
-    def __init__(self):
-        self.images = np.load('train_images.npy') / 255
-        # self.labels = np.load('Labels.npy')
-        self.labels = (np.load('train_labels.npy')).reshape(-1)
 
-    def __getitem__(self, index):
-        return torch.tensor(self.images[index], dtype=torch.float32), torch.tensor(self.labels[index],
-                                                                                   dtype=torch.int64)
+I3 = np.load(r'\Images.npy')
+I4 = np.load(r'\Labels.npy')
 
-    def __len__(self):
-        return len(self.labels)
+I3 = I3.astype('float32')
+I4 = I4.astype('float32')
 
 
-def test_data(directory, dataloader_dict):
-    path = os.path.join(directory, 'Results/result/Model.pt')
-    save_path = os.path.join(directory, 'Results/test_results')
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
 
-    model = torch.load(path)
-    running_corrects = 0
-    model = model.cpu()
-    GT = np.array(0)
-    Prediction = np.array(0)
-    model.eval()
-    n = 0
+
+Images2 = np.ones((250, 1, 28, 28))
+Images2 = Images2.astype('float32')
+temp_3 = 0
+temp_4 = 0
+for k in range(250) :
+    for i in range(28) :
+        for j in range(28) :
+            temp_3 = j * 5
+            Images2[k][0][i][j] = I3[k][temp_4][temp_3]
+        temp_4 = (i + 1) * 5
+    temp_3 = 0
+    temp_4 = 0
+I4.resize(250, )
+
+batch_size_test = 200
+
+x_data2=torch.from_numpy(Images2)
+y_data2=torch.from_numpy(I4)
+
+test_dataset = TensorDataset(x_data2, y_data2)
+test_loader = DataLoader(dataset=test_dataset,
+                         batch_size=batch_size_test,
+                         shuffle=True)
+'''
+def test():
+    correct = 0
+    total = 0
+    print("label       predicted")
     with torch.no_grad():
-        for test, label in dataloader_dict['test']:
-            test = torch.unsqueeze(test, dim=1)
+        for data in test_loader:
+            images, labels = data
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, dim=1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
 
-            outputs = model(test)
-            _, preds = torch.max(outputs, 1)
+            print("{}          {}".format(int(labels.item()), predicted.data.item()))
 
-            GT = np.concatenate((GT, label.detach().cpu().numpy()), axis=None)
-
-            Prediction = np.concatenate((Prediction, preds.detach().cpu().numpy()), axis=None)
-            running_corrects += torch.sum(preds == label.data)
-
-            n += label.shape[0]
-
-        test_acc = running_corrects.double() / n
-        print("Accuracy:{:4f}".format(test_acc))
-    np.save(os.path.join(save_path, 'truth_label'), GT[1:])
-    np.save(os.path.join(save_path, 'prediction_label'), Prediction[1:])
-
-    confusion = confusion_matrix(GT[1:], Prediction[1:])
-
-    classes = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16',
-               '17', '18', '19', '20', '21', '22', '23', '24', '25']
-    title = 'Test Confusion Matrix'
-
-    plot_confusion_matrix(confusion, classes, title=title)
-    plt.savefig(os.path.join(save_path, 'cm_acc_' + str(test_acc.item()) + '.png'))
-    plt.show()
-
-    return GT[1:], Prediction[1:]
+        print('CNN trained model： accuracy on my_mnist_dataset set:%d %%' % (100 * correct / total))
+'''
+cnn = CNN()
+cnn.load_state_dict(torch.load(r'D:\study\ml_project\code\test2218\CNN_model_weight2.pth'), False)
 
 
-if __name__ == '__main__':
-    test_set = test_dataset()
-    dataloaders_dict = {'test': torch.utils.data.DataLoader(test_set, batch_size=batch_size['test'],
-                                                            shuffle=True, num_workers=0)}
-    directory = os.getcwd()
-    GT, Prediction = test_data(directory, dataloaders_dict)
+eval_loss = 0
+eval_acc = 0
+criterion = nn.CrossEntropyLoss() 
+
+temp = 0
+pred_result = []
+for data in test_loader:
+    temp = temp+1
+    img, label = data
+    #Judge whether GPU can be used, and if it can convert data into a format that GPU can process.
+    if torch.cuda.is_available():
+        img = Variable(img).cuda()
+        label = Variable(label).cuda()
+    else:
+        img = Variable(img)
+        label = Variable(label)
+
+    out = cnn(img)
+    loss = criterion(out,label.long())
+    eval_loss += loss.item() * label.size(0)
+    _, pred = torch.max(out, 1)
+    pre1 = pred.tolist()
+    pred_result.append(pre1)
+    num_correct = (pred == label).sum()
+    accuracy = (pred == label).float().mean()
+    eval_acc += num_correct.item()
+
+print('Test Loss: {:.6f}, Acc: {:.6f}'.format(eval_loss / (len(
+    test_dataset)), eval_acc/len(test_dataset)))
+#pred_result_1 =  np.stack(int(np.array(pred_result[0])),int(np.array(pred_result[1])))
